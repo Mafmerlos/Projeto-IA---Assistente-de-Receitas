@@ -101,6 +101,8 @@ python app.py
 
 A API sobe em `http://localhost:3001`.
 
+Para conferir se ela está no ar, abra `http://localhost:3001/api/status` no navegador: deve aparecer `"status": "online"`.
+
 ### 2. Frontend (em outro terminal)
 
 ```bash
