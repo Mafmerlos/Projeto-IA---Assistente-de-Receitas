@@ -33,14 +33,27 @@ Projeto da disciplina de Inteligência Artificial.
 | IA | `gemini-3.8-flash` | Modelo principal |
 | IA | `gemini-3.1-flash-lite` | Modelo reserva |
 
-## Arquitetura
+## Arquitetura (MVC)
+
+O backend segue o padrão **MVC (Model-View-Controller)**:
+
+| Camada | Arquivo | Responsabilidade |
+| --- | --- | --- |
+| Model | `backend/models/receita_model.py` | Dados e regras: valida os ingredientes, monta o prompt, chama o Gemini (com modelo reserva) e separa os extras |
+| View | `backend/views/resposta_view.py` | Monta as respostas em JSON (sucesso e erro) |
+| Controller | `backend/controllers/receita_controller.py` | Recebe as requisições, chama o Model e escolhe a View e o código HTTP |
+| — | `backend/app.py` | Cria o servidor Flask, liga o CORS e registra as rotas do Controller |
+
+A tela em React Native Web é a camada visual que o usuário vê: ela consome o JSON montado pela View.
 
 ```
 [ Frontend: React Native Web (localhost:5173) ]
                  |  POST /api/receitas/gerar (JSON, via fetch)
                  v
-[ Backend: Flask - app.py (localhost:3001) ]
-   rotas -> validação -> prompt -> chamar_modelo -> trava de extras
+[ Controller: receita_controller.py ]  ->  [ View: resposta_view.py ] -> JSON
+                 |
+                 v
+[ Model: receita_model.py ]  ->  validação, prompt, trava de extras
                  |  generate_content (SDK google-genai, resposta em JSON)
                  v
 [ Google Gemini: gemini-3.8-flash, reserva gemini-3.1-flash-lite ]
@@ -53,7 +66,13 @@ O frontend nunca chama o Gemini diretamente. A chave de API fica só no `.env` d
 ```
 Projeto IA/
 ├── backend/
-│   ├── app.py              # API completa (245 linhas)
+│   ├── app.py              # Cria o servidor e registra as rotas
+│   ├── models/
+│   │   └── receita_model.py        # Model: regras, prompt e Gemini
+│   ├── views/
+│   │   └── resposta_view.py        # View: respostas em JSON
+│   ├── controllers/
+│   │   └── receita_controller.py   # Controller: rotas e fluxo da requisição
 │   ├── requirements.txt    # Dependências Python
 │   ├── .env.example        # Modelo do .env
 │   └── .env                # GEMINI_API_KEY e PORT (não vai para o GitHub)
@@ -185,10 +204,10 @@ O tempo de preparo não é informado pelo usuário: a IA estima o tempo de cada 
 
 ## Integração com o Gemini
 
-1. O prompt tem cinco partes: persona (chef experiente), verificação prévia (os itens são alimentos?), dados do usuário, diretrizes (RN06, RN07 e RN11) e o molde JSON da resposta.
-2. A chamada usa `response_mime_type="application/json"`, então o Gemini responde em JSON puro, que vai direto para `json.loads`.
-3. Se o modelo principal lançar qualquer erro, o backend tenta o modelo reserva.
-4. Se os dois falharem, `verificar_erro_cota` e `verificar_erro_sobrecarga` analisam os erros para responder 429, 503 ou 500.
-5. Depois da resposta, `separar_ingredientes_extras` move para os opcionais qualquer item que o usuário não informou.
+1. `montar_prompt` (Model) monta o prompt em cinco partes: persona (chef experiente), verificação prévia (os itens são alimentos?), dados do usuário, diretrizes (RN06, RN07 e RN11) e o molde JSON da resposta.
+2. `chamar_modelo` (Model) usa `response_mime_type="application/json"`, então o Gemini responde em JSON puro, que vai direto para `json.loads`.
+3. `gerar_receita` (Model) tenta o modelo principal; se ele lançar qualquer erro, tenta o modelo reserva.
+4. Se os dois falharem, `verificar_erro_cota` e `verificar_erro_sobrecarga` classificam o erro, e o Controller responde 429, 503 ou 500.
+5. Depois da resposta, `separar_ingredientes_extras` (Model) move para os opcionais qualquer item que o usuário não informou.
 
 **Acompanhar a cota:** a API do Gemini não informa quanto de cota resta. O uso por modelo e os limites do plano aparecem no Google AI Studio, na conta dona da chave. No terminal do backend, os avisos `[Aviso]`, `[Fallback]` e `[Erro]` mostram a causa de cada falha.
